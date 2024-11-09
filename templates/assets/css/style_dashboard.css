@@ -1,0 +1,102 @@
+body {
+    background-color: #0e0e10;
+    color: white;
+}
+
+.dropdown {
+    position: relative;
+    display: inline-block;
+}
+
+.dropdown-content {
+    display: none;
+    position: absolute;
+    background-color: #18181b;
+    box-shadow: 0px 8px 16px rgba(0, 0, 0, 0.2);
+    padding: 12px;
+    z-index: 1;
+    width: 200px;
+}
+
+.dropdown-content label {
+    display: block;
+    margin-bottom: 5px;
+}
+
+.dropdown-content input[type="checkbox"] {
+    margin-right: 10px;
+}
+
+.dropdown:hover .dropdown-content {
+    display: block;
+}
+
+.dropdown-btn {
+    background-color: #000000;
+    color: white;
+    padding: 10px;
+    font-size: 16px;
+    border: none;
+    cursor: pointer;
+}
+
+.dropdown-btn:focus {
+    outline: none;
+}
+
+input[type="checkbox"] {
+    accent-color: rgb(112, 16, 99);
+}
+
+.gamebox {
+    background-color: #18181b;
+    display: flex;
+    justify-content: flex-start;
+    margin-top: 15px;
+    position: relative;
+    user-select: none;
+}
+
+.gamebox_year_released, .gamebox_completion_order {
+    width: 8ch;
+}
+
+.gamebox_box {
+    margin: 10px;
+    flex-direction: column;
+    display: flex;
+    justify-content: flex-start;
+}
+
+.drop-indicator {
+    height: 4px;
+    background-color: blue;
+    position: absolute;
+    left: 0;
+    right: 0;
+    display: none;
+    transition: background-color 0.3s ease;
+    z-index: 10;
+    width: 100%;
+}
+
+.drag-handle {
+    cursor: grab;
+    background-color: #44444400;
+    color: white;
+    padding: 5px;
+    border: none;
+    margin-bottom: 10px;
+}
+
+.gamebox_game_id {
+    width: 4ch; 
+}
+
+.drag-handle:active {
+    cursor: grabbing;
+}
+
+.dragging {
+    opacity: 0.5;
+}

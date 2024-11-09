@@ -1,0 +1,103 @@
+<head>
+    <title>> Games</title>
+    <link href="/css/tailwind.min.css" rel="stylesheet"/>
+    <link href="/css/style.css" rel="stylesheet" />
+    <link rel="icon" type="image/x-icon" href="/img/icon.png">
+</head>
+<body>
+    <main class="grow relative px-2 py-4 md:px-8">
+        <div class="container z-10 border border-purple-400 border-opacity-30 container content mx-auto pb-20 px-2 pt-2 md:pt-6 md:p-5 md:pb-20 relative">
+            <div class="control_container control_container_filter">
+                <button class="control_btn btn_all" data-genre="" onclick='loadGamesContent("")'>ALL</button>
+                <button class="control_btn btn_rpg" data-genre="RPG" onclick='loadGamesContent("RPG")'>RPG</button>
+                <button class="control_btn btn_fps" data-genre="FPS" onclick='loadGamesContent("FPS")'>FPS</button>
+                <button class="control_btn btn_mmo" data-genre="MMO"onclick='loadGamesContent("MMO")'>MMO</button>
+            </div>
+            <div class="control_container control_container_order">
+                <button class="control_btn btn_desc" data-order="desc" onclick="loadGamesContent(filter, false)">DESC</button>
+                <button class="control_btn btn_asc" data-order="asc" onclick="loadGamesContent(filter, true)">ASC</button>
+            </div>
+            <div class="game_container flex flex-wrap" id="game_container">
+                
+            </div>
+        </div>
+    </div>
+</body>
+<script>
+    var filter = "";
+    var order_asc = true;
+
+async function loadGamesContent(genre, asc) {
+    try {
+        let url = '/game_window';
+        const params = new URLSearchParams();
+
+        if (genre !== undefined) {
+            params.append('filter', genre);
+        } else {
+            params.append("filter", filter);
+        }
+
+        if (asc !== undefined) {
+            params.append('asc', asc);
+        } else {
+            params.append('asc', order_asc);
+        }
+
+        if (params.toString()) {
+            url += `?${params.toString()}`;
+        }
+
+        const response = await fetch(url);
+
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        } else {
+            if (genre !== undefined) {
+                filter = genre;
+            }
+            if (asc !== undefined) {
+                order_asc = asc;
+            }
+        }
+
+        const content = await response.text();
+        document.getElementById('game_container').innerHTML = content;
+
+        highlightSelectedButton(filter);
+        highlightSelectedOrder(order_asc);
+    } catch (error) {
+        console.error('Error fetching the games content:', error);
+    }
+}
+
+function highlightSelectedButton(selectedGenre) {
+    const buttons = document.querySelectorAll('.control_btn[data-genre]');
+    buttons.forEach(btn => {
+        const genre = btn.getAttribute('data-genre');
+        if (genre === selectedGenre) {
+            btn.classList.add('active');
+        } else {
+            btn.classList.remove('active');
+        }
+    });
+}
+
+function highlightSelectedOrder(isAsc) {
+    const ascButton = document.querySelector('.control_btn[data-order="asc"]');
+    const descButton = document.querySelector('.control_btn[data-order="desc"]');
+    
+    if (isAsc) {
+        ascButton.classList.add('active');
+        descButton.classList.remove('active');
+    } else {
+        ascButton.classList.remove('active');
+        descButton.classList.add('active');
+    }
+}
+
+window.onload = () => {
+    loadGamesContent("", false);
+};
+
+</script>

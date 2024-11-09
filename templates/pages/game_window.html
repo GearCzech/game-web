@@ -1,0 +1,43 @@
+{% for game in games %}
+<div class="game_window font-pixel group inline-block w-full md:w-1/2 xl:w-1/3 true shadow-lg hover:shadow-2xl">
+    <div class="game_header flex items-center">
+        <h2 class="game_name">{{ game.name }}</h2>
+        {% if game.year_released > - 1 %}
+        <div class="game_released">
+            <p class="game_released_text">{{ game.year_released }}</p>
+        </div>
+        {% endif %}
+        <div class="game_completion_order">
+            <p class="game_completion_order_text">#{{ game.completion_order }}</p>
+        </div>
+    </div>
+    <div class="game_middle font-inter flex text-gray-900 minHRating leading-6 tracking-normal">
+        <div class="game_image">
+            <picture>
+                {% if game.image_cover != "" %}
+                <source srcset="https://mwebtest.gearczech.dev/img/{{ game.image_cover }}.avif" type="image/avif">
+                {% endif %}
+                <img {% if game.image_cover != "" %} src="https://mwebtest.gearczech.dev/img/{{ game.image_cover }}.jpg" {% else %} src="/img/no_image_found.jpg" {% endif %} class="game_image_object" height="120" width="90">
+            </picture>
+        </div>
+        <div class="game_content small_font">
+            {% if game.dlc %}
+            <div class="game_tag game_dlc">
+                <p class="game_dlc_text">+ DLC</p>
+            </div>
+            {% endif %}
+            {% for genre in game.genres %}
+            <button class="game_tag game_genre game_genre_{{ genre }}" data-genre="{{ genre }}" onclick='loadGamesContent("{{ genre }}")'>
+                <p class="game_genre_text game_genre_{{ genre }}_text">{{ genre }}</p>
+            </button>
+            {% endfor %}
+            <p class="game_id">ID {{ game.id }}</p>
+            {% if game.description != "" %}
+            <div class="game_description">
+                <p class="game_description_text">{{ game.description }}</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endfor %}

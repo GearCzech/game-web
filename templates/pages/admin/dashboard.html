@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>> Dashboard</title>
+    <link href="/css/style_dashboard.css" rel="stylesheet">
+    <link rel="icon" type="image/x-icon" href="/img/icon.png">
+    <script src="https://unpkg.com/htmx.org@2.0.3"></script>
+</head>
+<body>
+
+<button onclick="updateOrderInputs();">Update</button>
+<button onclick="submitFormsSequentially();">Send</button>
+<div id="game-container">
+    {% set total_games = games.len() %}
+    {% for game in games %}
+    <form id="game-form-{{ game.id }}" hx-swap="none" data-index="{{ loop.index - 1 }}" class="gamebox" draggable="true">
+        <button class="drag-handle" draggable="true">
+            <img src="/img/handle.png">
+        </button>
+        <div class="drop-indicator"></div>
+        <div class="gamebox_box">
+            <b>Name:</b>
+            <input class="gamebox_game_name" name="game_name" value="{{ game.name }}">
+        </div>
+        <div class="gamebox_box">
+            <b>Description:</b>
+            <input class="gamebox_game_description" name="game_description" value="{{ game.description }}">
+        </div>
+        <div class="gamebox_box">
+            <b>Released:</b>
+            <input type="number" class="gamebox_year_released" name="year_released" value="{% if game.year_released != -1 %}{{ game.year_released }}{% endif %}" min="1900" max="2100">
+        </div>
+        <div class="gamebox_box">
+            <b>Order:</b>
+            <input type="number" class="gamebox_completion_order" name="completion_order" value="<order>" min="1" readonly>
+        </div>
+        <div class="gamebox_box">
+            <b>Image Name</b>
+            <input class="gamebox_image_cover" name="image_cover" value="{{ game.image_cover }}">
+        </div>
+        <div class="gamebox_box">
+            <div class="gamebox_game_image">
+                <picture>
+                    {% if game.image_cover != "" %}
+                    <source id="game-image-source" srcset="https://mwebtest.gearczech.dev/img/{{ game.image_cover }}.avif" type="image/avif">
+                    {% endif %}
+                    <img id="game-image" {% if game.image_cover != "" %} src="https://mwebtest.gearczech.dev/img/{{ game.image_cover }}.jpg" {% else %} src="/img/no_image_found.jpg" {% endif %} class="game_image_object" height="60" width="45">
+                </picture>
+            </div>
+        </div>
+        <div class="gamebox_box">
+            <b>DLC:</b>
+            <input type="checkbox" name="dlc" {% if game.dlc %} checked {% endif %}>
+        </div>
+
+        <div class="gamebox_box">
+            <div class="dropdown">
+                <button class="dropdown-btn">Select Tags</button>
+                <div class="dropdown-content">
+                    {% for genre in genres %}
+                    <label><input type="checkbox" value="{{ genre.name }}" {% if game.genres.contains(genre.name) %} checked {% endif %}>{{ genre.name }}</label>
+                    {% endfor %}
+                </div>
+            </div>
+            <p id="selectedItems">Selected Tags: None</p>
+        </div>
+        <div class="gamebox_box">
+            <input class="gamebox_game_id" name="game_id" value="{{ game.id }}" readonly>
+        </div>
+    </form>
+    {% endfor %}
+</div>
+
+<script>
+    const gameboxes = document.querySelectorAll('.gamebox');
+    let currentDrag = null;
+
+    gameboxes.forEach(gamebox => {
+        const dragHandle = gamebox.querySelector('.drag-handle');
+        const dropIndicator = gamebox.querySelector('.drop-indicator');
+
+        dragHandle.addEventListener('dragstart', (e) => {
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/plain', gamebox.dataset.index);
+            currentDrag = gamebox;
+            gamebox.classList.add('dragging');
+        });
+
+        dragHandle.addEventListener('dragend', () => {
+            gamebox.classList.remove('dragging');
+            updateOrderInputs();
+            hideDropIndicators();
+            currentDrag = null;
+        });
+
+        gamebox.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+
+            const bounding = gamebox.getBoundingClientRect();
+            const isAboveMiddle = e.clientY < bounding.top + (bounding.height / 2);
+
+            dropIndicator.style.display = 'block';
+            dropIndicator.style.top = isAboveMiddle ? '0' : `${bounding.height}px`;
+        });
+
+        gamebox.addEventListener('dragleave', () => {
+            dropIndicator.style.display = 'none';
+        });
+
+        gamebox.addEventListener('drop', (e) => {
+            e.preventDefault();
+            const draggedIndex = e.dataTransfer.getData('text/plain');
+            const draggedGamebox = gameboxes[draggedIndex];
+
+            if (draggedGamebox !== gamebox) {
+                const bounding = gamebox.getBoundingClientRect();
+                const isBelow = e.clientY > bounding.top + (bounding.height / 2);
+
+                if (isBelow) {
+                    gamebox.parentNode.insertBefore(draggedGamebox, gamebox.nextSibling);
+                } else {
+                    gamebox.parentNode.insertBefore(draggedGamebox, gamebox);
+                }
+            }
+            hideDropIndicators();
+        });
+    });
+
+    function updateOrderInputs() {
+        const gameboxes = document.querySelectorAll('.gamebox');
+        gameboxes.forEach((gamebox, index) => {
+            const orderInput = gamebox.querySelector('.gamebox_completion_order');
+            orderInput.value = gameboxes.length - index;
+        });
+    }
+
+    function hideDropIndicators() {
+        const indicators = document.querySelectorAll('.drop-indicator');
+        indicators.forEach(indicator => {
+            indicator.style.display = 'none';
+        });
+    }
+
+    document.querySelectorAll('.gamebox').forEach(function(gamebox) {
+        const imageCoverInput = gamebox.querySelector('.gamebox_image_cover');
+        const imageElement = gamebox.querySelector('#game-image');
+        const sourceElement = gamebox.querySelector('#game-image-source');
+
+        imageCoverInput.addEventListener('input', function() {
+            const imageCoverValue = imageCoverInput.value.trim();
+
+            if (imageCoverValue) {
+                imageElement.src = `https://mwebtest.gearczech.dev/img/${imageCoverValue}.jpg`;
+                sourceElement.srcset = `https://mwebtest.gearczech.dev/img/${imageCoverValue}.avif`;
+            } else {
+                imageElement.src = `/img/no_image_found.jpg`;
+                sourceElement.srcset = ``;
+            }
+        });
+    });
+
+    document.querySelectorAll('.dropdown').forEach(function(dropdown) {
+        const checkboxes = dropdown.querySelectorAll('.dropdown-content input[type="checkbox"]');
+        const selectedItemsText = dropdown.nextElementSibling;
+
+        updateSelectedItems();
+
+        checkboxes.forEach(checkbox => {
+            checkbox.addEventListener('change', updateSelectedItems);
+        });
+
+        function updateSelectedItems() {
+            const selectedItems = Array.from(checkboxes)
+                                       .filter(checkbox => checkbox.checked)
+                                       .map(checkbox => checkbox.value);
+            selectedItemsText.textContent = selectedItems.length > 0 ? 
+                'Selected Tags: ' + selectedItems.join(', ') : 'Selected Tags: None';
+        }
+    });
+
+    async function submitFormsSequentially() {
+        const forms = document.querySelectorAll("form");
+
+        for (const form of forms) {
+            await submitFormWithHTMX(form);
+        }
+        
+        console.log("All forms submitted sequentially!");
+    }
+
+    function submitFormWithHTMX(form) {
+        return new Promise((resolve, reject) => {
+            const formData = new FormData(form);
+            const actionUrl = form.getAttribute("action") || "/admin/save_game";
+
+            htmx.ajax("POST", actionUrl, {
+                swap: "none",
+                values: Object.fromEntries(formData),
+                target: form,
+                headers: {
+                    "X-Requested-With": "XMLHttpRequest"
+                }
+            }).then(() => {
+                console.log(`Form submitted to ${actionUrl}`);
+                resolve();
+            }).catch(error => {
+                console.error(`Failed to submit form to ${actionUrl}:`, error);
+                reject(error);
+            });
+        });
+    }
+
+    updateOrderInputs();
+</script>
+</body>
+</html>
