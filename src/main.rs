@@ -7,26 +7,29 @@ static GLOBAL: MiMalloc = MiMalloc;
 
 use askama::Template;
 use axum::{
-    extract::Query, response::Html, routing::{get, post}, Extension, Form, Router
+    extract::Query,
+    response::Html,
+    routing::{get, post},
+    Extension, Form, Router,
 };
+use dotenv::dotenv;
 use memory_serve::{load_assets, MemoryServe};
 use minify_html::{minify, Cfg};
 use serde::{Deserialize, Serialize};
-use sqlx::postgres::PgPoolOptions;
-use sqlx::PgPool;
-use sqlx::Row;
-use dotenv::dotenv;
+use sqlx::{postgres::PgPoolOptions, PgPool, QueryBuilder, Row};
+use rayon::prelude::*;
 
 #[tokio::main]
 async fn main() {
     dotenv().ok();
-    let db_connection_string = std::env::var("DATABASE_URL").expect("DATABASE_CONNECTION_STRING not set!");
+    let db_connection_string =
+        std::env::var("DATABASE_URL").expect("DATABASE_CONNECTION_STRING not set!");
 
     let pool = PgPoolOptions::new()
-    .max_connections(400)
-    .connect(&db_connection_string)
-    .await
-    .unwrap();
+        .max_connections(400)
+        .connect(&db_connection_string)
+        .await
+        .unwrap();
 
     let asset_router = MemoryServe::new(load_assets!("templates/assets"))
         .cache_control(memory_serve::CacheControl::Medium)
@@ -79,68 +82,53 @@ struct FormDBGameInfo {
 #[derive(Serialize, Deserialize)]
 struct GenresFromDB {
     id: i32,
-    name: String
+    name: String,
 }
 
-async fn load_info_from_db_filtered(Extension(pool): Extension<PgPool>, asc: bool, genre_name: String) -> Vec<DBGameInfo> {
-    let order = if asc { "ASC" } else { "DESC" };
+async fn load_info_from_db_filtered(
+    Extension(pool): Extension<PgPool>,
+    asc: bool,
+    genre_name: String,
+) -> Vec<DBGameInfo> {
+    let mut builder = QueryBuilder::new(
+        r#"
+        SELECT g.id, g.name, g.description, g.year_released, g.completion_order, g.image_cover, g.dlc, array_agg(ge.name) AS genres
+        FROM public.games g
+        LEFT JOIN public.game_genres gg ON g.id = gg.game_id
+        LEFT JOIN public.genres ge ON gg.genre_id = ge.id
+        "#,
+    );
 
-    let query = if genre_name.is_empty() {
-        format!(
-            r#"
-            SELECT g.id, g.name, g.description, g.year_released, g.completion_order, g.image_cover, g.dlc, array_agg(ge.name) AS genres
-            FROM public.games g
-            LEFT JOIN public.game_genres gg ON g.id = gg.game_id
-            LEFT JOIN public.genres ge ON gg.genre_id = ge.id
-            GROUP BY g.id
-            ORDER BY g.completion_order {};
-            "#,
-            order
-        )
-    } else {
-        format!(
-            r#"
-            SELECT g.id, g.name, g.description, g.year_released, g.completion_order, g.image_cover, g.dlc, array_agg(ge.name) AS genres
-            FROM public.games g
-            LEFT JOIN public.game_genres gg ON g.id = gg.game_id
-            LEFT JOIN public.genres ge ON gg.genre_id = ge.id
-            WHERE g.id IN (
-                SELECT g2.id
-                FROM public.games g2
+    if !genre_name.is_empty() {
+        builder
+            .push(
+                " WHERE g.id IN (SELECT g2.id FROM public.games g2
                 LEFT JOIN public.game_genres gg2 ON g2.id = gg2.game_id
-                LEFT JOIN public.genres ge2 ON gg2.genre_id = ge2.id
-                WHERE ge2.name = $1
+                LEFT JOIN public.genres ge2 ON gg2.genre_id = ge2.id WHERE ge2.name = ",
             )
-            GROUP BY g.id
-            ORDER BY g.completion_order {};
-            "#,
-            order
-        )
-    };
+            .push_bind(genre_name)
+            .push(")");
+    }
 
-    let db_info = if genre_name.is_empty() {
-        sqlx::query(&query)
-            .fetch_all(&pool)
-            .await
-            .unwrap()
-    } else {
-        sqlx::query(&query)
-            .bind(&genre_name) 
-            .fetch_all(&pool)
-            .await
-            .unwrap()
-    };
+    builder
+        .push(" GROUP BY g.id ORDER BY g.completion_order ")
+        .push(if asc { "ASC" } else { "DESC" });
 
-    db_info.into_iter().map(|record| DBGameInfo { 
-        id: record.try_get::<i32, _>("id").unwrap(),
-        name: record.try_get::<String, _>("name").unwrap(),
-        description: record.try_get::<Option<String>, _>("description").unwrap_or(None).unwrap_or_default(),
-        year_released: record.try_get::<Option<i32>, _>("year_released").unwrap_or(None).unwrap_or(-1),
-        completion_order: record.try_get::<Option<i32>, _>("completion_order").unwrap_or(Some(-1)).unwrap(),
-        image_cover: record.try_get::<Option<String>, _>("image_cover").unwrap_or(None).unwrap_or_default(),
-        dlc: record.try_get::<Option<bool>, _>("dlc").unwrap_or(Some(false)).unwrap(),
-        genres: record.try_get::<Option<Vec<String>>, _>("genres").unwrap_or(Some(Vec::new())).unwrap(),
-    }).collect()
+    let db_results = builder.build().fetch_all(&pool).await.unwrap();
+
+    db_results
+        .into_par_iter()
+        .map(|record| DBGameInfo {
+            id: record.try_get("id").unwrap(),
+            name: record.try_get("name").unwrap(),
+            description: record.try_get("description").unwrap_or_default(),
+            year_released: record.try_get("year_released").unwrap_or(-1),
+            completion_order: record.try_get("completion_order").unwrap_or(-1),
+            image_cover: record.try_get("image_cover").unwrap_or_default(),
+            dlc: record.try_get("dlc").unwrap_or(false),
+            genres: record.try_get("genres").unwrap_or_default(),
+        })
+        .collect()
 }
 
 async fn load_genres_from_db(Extension(pool): Extension<PgPool>) -> Vec<GenresFromDB> {
@@ -155,14 +143,17 @@ async fn load_genres_from_db(Extension(pool): Extension<PgPool>) -> Vec<GenresFr
     .await
     .unwrap();
 
-    db_info.into_iter().map(|record| GenresFromDB {
-        id: record.id,
-        name: record.name,
-    }).collect()
+    db_info
+        .into_iter()
+        .map(|record| GenresFromDB {
+            id: record.id,
+            name: record.name,
+        })
+        .collect()
 }
 
 #[derive(Serialize, Deserialize)]
-struct GamesQueryParams{
+struct GamesQueryParams {
     filter: Option<String>,
     asc: Option<bool>,
 }
@@ -172,38 +163,46 @@ struct GamesQueryParams{
 struct GamesTemplate {
     games: Vec<DBGameInfo>,
 }
-async fn games(Extension(pool): Extension<PgPool>, Query(params): Query<GamesQueryParams>) -> Html<Vec<u8>> {
+async fn games(
+    Extension(pool): Extension<PgPool>,
+    Query(params): Query<GamesQueryParams>,
+) -> Html<Vec<u8>> {
     let filter = params.filter.unwrap_or_else(|| "".to_string());
     let asc = params.asc.unwrap_or(false);
     let gameinfos = load_info_from_db_filtered(Extension(pool), asc, filter).await;
-    let template = GamesTemplate{games: gameinfos};
+    let template = GamesTemplate { games: gameinfos };
     Html(minifi_html(template.render().unwrap()))
 }
 
 #[derive(Template)]
 #[template(path = "pages/games.html", escape = "none")]
-struct GamesPageTemplate {
-}
+struct GamesPageTemplate {}
 async fn games_page() -> Html<Vec<u8>> {
-    let template = GamesPageTemplate{};
+    let template = GamesPageTemplate {};
     Html(minifi_html(template.render().unwrap()))
 }
 
 #[derive(Template)]
 #[template(path = "pages/admin/dashboard.html", escape = "none")]
-struct AdminDashboardTemplate{
+struct AdminDashboardTemplate {
     games: Vec<DBGameInfo>,
-    genres: Vec<GenresFromDB>
+    genres: Vec<GenresFromDB>,
 }
-async fn admin_dashboard(Extension(pool): Extension<PgPool>) -> Html<Vec<u8>>{
-    let gameinfos = load_info_from_db_filtered(Extension(pool.clone()), false, "".to_string()).await;
+async fn admin_dashboard(Extension(pool): Extension<PgPool>) -> Html<Vec<u8>> {
+    let gameinfos =
+        load_info_from_db_filtered(Extension(pool.clone()), false, "".to_string()).await;
     let _genres = load_genres_from_db(Extension(pool.clone())).await;
-    let template = AdminDashboardTemplate{games: gameinfos, genres: _genres};
+    let template = AdminDashboardTemplate {
+        games: gameinfos,
+        genres: _genres,
+    };
     Html(minifi_html(template.render().unwrap()))
 }
 
-async fn update_db(Extension(pool): Extension<PgPool>, inputform: Form<FormDBGameInfo>) -> axum::response::Html<String>{
-    
+async fn update_db(
+    Extension(pool): Extension<PgPool>,
+    inputform: Form<FormDBGameInfo>,
+) -> axum::response::Html<String> {
     println!("Received game info: {:?}", inputform);
 
     let query = format!(
@@ -233,9 +232,7 @@ async fn update_db(Extension(pool): Extension<PgPool>, inputform: Form<FormDBGam
 
     println!("Received game query: {:?}", query);
 
-    let _ = sqlx::query(&query)
-    .execute(&pool)
-    .await;
+    let _ = sqlx::query(&query).execute(&pool).await;
 
     Html("OK".to_string())
 }
