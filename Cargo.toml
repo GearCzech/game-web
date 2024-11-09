@@ -19,4 +19,4 @@ sqlx = { version = "0.7", features = [ "runtime-tokio", "postgres", "ipnetwork" 
 minify-html = "0.15"
 memory-serve = "0.4"
 rayon = "1.9"
-dotenv
+dotenv = "*"

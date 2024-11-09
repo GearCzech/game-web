@@ -20,7 +20,7 @@ use dotenv::dotenv;
 #[tokio::main]
 async fn main() {
     dotenv().ok();
-    let db_connection_string = std::env::var("DATABASE_CONNECTION_STRING").expect("DATABASE_CONNECTION_STRING not set!");
+    let db_connection_string = std::env::var("DATABASE_URL").expect("DATABASE_CONNECTION_STRING not set!");
 
     let pool = PgPoolOptions::new()
     .max_connections(400)
